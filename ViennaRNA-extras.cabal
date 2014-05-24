@@ -1,0 +1,42 @@
+name:                ViennaRNA-extras
+version:             0.0.0.1
+synopsis:            ViennaRNA v2 bindings
+homepage:            http://www.tbi.univie.ac.at/~choener/
+license:             BSD3
+license-file:        LICENSE
+author:              Christian Hoener zu Siederdissen, 2014
+maintainer:          choener@tbi.univie.ac.at
+copyright:           Christian Hoener zu Siederdissen, 2014
+category:            Bioinformatics
+build-type:          Simple
+cabal-version:       >=1.8
+
+description:
+  Extra functionality on top of the ViennaRNA bindings. Please note the special
+  license of the ViennaRNA bindings (while the -extras library is BSD3, it is
+  not very useful without the bindings)!
+  .
+  .
+  If you use this software, please cite:
+  .
+  @
+  R. Lorenz, S.H. Bernhart, C. Hoener zu Siederdissen, H. Tafer, C. Flamm, P.F. Stadler and I.L. Hofacker (2011)
+  ViennaRNA Package 2.0
+  Algorithms for Molecular Biology: 6:26
+  @
+  .
+  <http://www.almob.org/content/6/1/26>
+
+
+
+library
+  exposed-modules:
+    BioInf.ViennaRNA.PartFun
+  build-depends:
+    array                           ,
+    BiobaseXNA          == 0.9.*    ,
+    ViennaRNA-bindings  == 0.1.4.*  ,
+    base                == 4.*
+
+-- TODO add github repository
+
