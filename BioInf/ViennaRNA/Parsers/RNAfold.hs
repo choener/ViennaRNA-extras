@@ -32,7 +32,10 @@ bslToRNAfoldResult bs = do
     Right r → return r
 {-# Inline bslToRNAfoldResult #-}
 
--- |
+-- | Parser for @RNAfold@ output. @RNAfold@ can have between 2 and 5 output lines.
+--
+-- TODO Extend the parser to deal with all cases. Our best hint is probably if
+-- there is whitespace in a line.
 --
 -- @
 -- echo "CCCAAAGGG\nCCCAAAGGG" | ./RNAfold -p

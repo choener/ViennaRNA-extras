@@ -63,9 +63,11 @@ library
   default-language:
     Haskell2010
   default-extensions: BangPatterns
-                    , UnicodeSyntax
-                    , DeriveData.Typeable
+                    , DeriveDataTypeable
+                    , DeriveGeneric
                     , GeneralizedNewtypeDeriving
+                    , TemplateHaskell
+                    , UnicodeSyntax
   ghc-options:
     -O2 -funbox-strict-fields
   if flag(debug)
