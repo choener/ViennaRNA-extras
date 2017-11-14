@@ -104,6 +104,7 @@ test-suite properties
                     , TypeFamilies
                     , TypeOperators
                     , TypeSynonymInstances
+                    , UnicodeSyntax
   build-depends: base
                , QuickCheck
                , tasty                        >= 0.11
