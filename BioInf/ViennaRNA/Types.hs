@@ -1,15 +1,19 @@
 
 module BioInf.ViennaRNA.Types where
 
-import Data.ByteString (ByteString)
-import GHC.Generics (Generic)
 import Control.Lens
+import Control.Monad (guard)
+import Data.ByteString (ByteString)
+import Data.ByteString.Char8 as BS
+import Data.Char (toUpper)
+import GHC.Generics (Generic)
 
+import Biobase.Types.Energy
 import Biobase.Types.Sequence
 import Biobase.Types.Structure
-import Biobase.Types.Energy
 
-import Data.Attoparsec.ByteString.Char8 as A
+import Data.Attoparsec.ByteString.Char8 as A8
+import Data.Attoparsec.ByteString as A
 
 
 
@@ -18,11 +22,12 @@ import Data.Attoparsec.ByteString.Char8 as A
 -- These should be getters as well!
 
 data Folded = Folded
-  { _foldedEnergy     ∷ !DG
-  , _foldedStructure  ∷ !RNAss
+  { _foldedStructure  ∷ !RNAss
+  , _foldedEnergy     ∷ !DG
   }
   deriving (Read,Show,Eq,Ord,Generic)
 makeLensesWith (lensRules & generateUpdateableOptics .~ False) ''Folded
+
 
 -- | Space-efficient RNAfold structure. RNAfold allows a DNA input, but this is
 -- not allowed in this data structure. If you want that, keep the original
@@ -65,8 +70,21 @@ makeLensesFor [("_sequenceID", "sequenceIDlens")] ''RNAfold
 
 
 
+data RNArewrite
+  = NoRewrite
+  | ForceRNA
+
 -- | Parsing for 'RNAfold'. This should parse all variants that @RNAfold@
 -- produces.
+--
+-- The parser for a 'Folded' structure has to deal with different "energy"
+-- types. The different energies are bracketed by different types of brackets.
+--
+-- @
+-- mfe        (((...))) ( -1.20)
+-- ensemble   (((...))) [ -1.41]
+-- centroid   (((...))) { -1.20 d=1.06}
+-- @
 --
 -- TODO Move into submodule.
 --
@@ -77,14 +95,64 @@ makeLensesFor [("_sequenceID", "sequenceIDlens")] ''RNAfold
 -- TODO I think it is possible to figure the line type based on the energy and
 -- the brackets around the energy.
 
-pRNAfold ∷ Parser RNAfold
-pRNAfold = do
-  _sequenceID ← error "parse sequence id if given"
-  _input ← error "parse RNAseq or RNAseq which is then converted"
-  _mfe ← error "parse mfe structure and energy"
-  _mfeFrequency ← error "parse mfe frequency"
-  _ensemble ← error "parse ensemble"
-  _centroid ← error "parse centroid"
-  _diversity ← error "parse diversity"
+pRNAfold
+  ∷ RNArewrite
+  → Parser RNAfold
+pRNAfold r = do
+  let endedLine = A.takeTill isEndOfLine <* endOfLine
+  let s2line = A8.takeWhile1 (`BS.elem` "(.)") <* skipSpace
+  let nope = Folded (RNAss "") (DG 0)
+  let rewrite = case r of
+        NoRewrite → id
+        ForceRNA  → BS.map (go . toUpper) where
+          go x
+            | x `BS.elem` "ACGUacgu" = x
+          go x   = 'N'
+  _sequenceID ← option "" $ char '>' *> endedLine
+  _input      ← RNAseq <$> rewrite <$> endedLine
+  let l = _input^.rnaseq.to BS.length
+  -- mfe is always present ?!
+  _mfe ← do s2 ← s2line
+            guard (BS.length s2 == l) <?> "s2 line length /= _input length"
+            skipSpace
+            e  ← char '(' *> skipSpace *> signed double <* char ')'
+            let _foldedStructure = RNAss s2
+            let _foldedEnergy    = DG e
+            return Folded{..}
+            <?> "mfe"
+  -- from here on, things are optional, including the newline after the mfe
+  -- energy!
+  _ensemble ← option nope $
+    (do endOfLine
+        s2 ← s2line
+        skipSpace
+        e  ← char '[' *> skipSpace *> signed double <* char ']'
+        let _foldedStructure = RNAss s2
+        let _foldedEnergy    = DG e
+        return Folded{..}
+        <?> "ensemble")
+  _centroid ← option nope $
+    (do endOfLine
+        s2 ← s2line
+        e ← char '{' *> skipSpace *> signed double
+        -- TODO handle @d@ values
+        d ← skipSpace *> "d=" *> skipSpace *> double
+        skipSpace *> char '}'
+        let _foldedStructure = RNAss s2
+        let _foldedEnergy    = DG e
+        return Folded{..}
+        <?> "centroid")
+  (_mfeFrequency, _diversity) ← option (0, 0) $
+    (do endOfLine -- previous line ending
+        skipSpace
+        "frequency of mfe structure in ensemble"
+        skipSpace
+        f ← double
+        "; ensemble diversity"
+        skipSpace
+        ed ← double
+        skipSpace
+        return (f, ed)
+        <?> "mfe frequency / diversity")
   return RNAfold{..}
 

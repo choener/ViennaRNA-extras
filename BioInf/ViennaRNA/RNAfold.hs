@@ -1,17 +1,18 @@
 
 module BioInf.ViennaRNA.RNAfold where
 
-import           Data.ByteString (ByteString)
-import           Control.Lens
 import           Control.Arrow
+import           Control.Lens
+import           Data.ByteString (ByteString)
+import           Data.Tuple (swap)
 
-import qualified BioInf.ViennaRNA.Bindings as Bindings
+import           Biobase.Types.Energy
 import           Biobase.Types.Sequence (mkRNAseq, RNAseq, rnaseq)
 import           Biobase.Types.Structure
-import           Biobase.Types.Energy
+import qualified BioInf.ViennaRNA.Bindings as Bindings
 
-import           BioInf.ViennaRNA.Types
 import           BioInf.ViennaRNA.Internal
+import           BioInf.ViennaRNA.Types
 
 
 
@@ -29,11 +30,11 @@ rnafold inp' = unsafePerformIO . withMutex $ do
   let _temperature = 37
   let _sequenceID = ""
   let _input = mkRNAseq inp'
-  _mfe      ← uncurry Folded <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
-  _centroid ← uncurry Folded <$> (DG *** RNAss) <$> Bindings.centroidTemp _temperature (_input^.rnaseq)
+  _mfe      ← uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
+  _centroid ← uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.centroidTemp _temperature (_input^.rnaseq)
   -- fucked up from here
   let _mfeFrequency = -1
-  let _ensemble = Folded (DG 999999) (RNAss "DO NOT USE ME")
+  let _ensemble = Folded (RNAss "DO NOT USE ME") (DG 999999)
   let _diversity = 0
   return $ RNAfold {..}
 
