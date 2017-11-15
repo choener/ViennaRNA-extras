@@ -59,6 +59,7 @@ library
                , bytestring
                , lens                   >= 4.0
 --               , pipes                  >= 4.0
+               , QuickCheck             >= 2.0
                , streaming              >= 0.1
                , streaming-bytestring   >= 0.1
                --
@@ -99,6 +100,7 @@ test-suite properties
                     , FlexibleContexts
                     , FlexibleInstances
                     , MultiParamTypeClasses
+                    , OverloadedStrings
                     , ScopedTypeVariables
                     , TemplateHaskell
                     , TypeFamilies
@@ -106,6 +108,8 @@ test-suite properties
                     , TypeSynonymInstances
                     , UnicodeSyntax
   build-depends: base
+               , attoparsec
+               , bytestring
                , QuickCheck
                , tasty                        >= 0.11
                , tasty-quickcheck             >= 0.8
