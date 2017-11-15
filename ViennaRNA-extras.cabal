@@ -57,6 +57,7 @@ library
                , array
                , attoparsec             >= 0.13
                , bytestring
+               , deepseq                >= 1.4
                , lens                   >= 4.0
 --               , pipes                  >= 4.0
                , QuickCheck             >= 2.0

@@ -17,6 +17,9 @@ import           Data.Monoid
 import           Data.Tuple (swap)
 import           GHC.Generics (Generic)
 import           Test.QuickCheck as QC
+import           Text.Printf
+import           Debug.Trace
+import           Control.DeepSeq
 
 import           Biobase.Types.Energy
 import           Biobase.Types.Sequence (mkRNAseq, RNAseq(..), rnaseq)
@@ -36,13 +39,19 @@ import           BioInf.ViennaRNA.Types
 -- updated via @sequenceIDlens@. This is to prevent accidental updates of
 -- fields that are actually interdependent.
 --
--- Missing parts are sloppily encoded by bogus values and empty strings.
+-- Missing parts are sloppily encoded by bogus values and empty strings. All
+-- @Folded@ structures and derived values are lazy. In case @rnafold@ was used
+-- to construct the structure, calculations are deferred until needed.
 --
 -- TODO newtype the sequence id.
 --
 -- TODO temperature. How to encode? Kelvin? In BiobaseTypes! Could use (Nat)SciTypes!
 --
 -- TODO complete BP probability array
+--
+-- TODO lazy fields for computation on demand!
+--
+-- TODO Wrapped via @Maybe@?
 
 data RNAfold = RNAfold
   { _sequenceID   ∷ !ByteString
@@ -50,24 +59,36 @@ data RNAfold = RNAfold
   -- fasta-style identifier.
   , _input        ∷ !RNAseq
   -- ^ The input sequence, converting into an RNA string.
-  , _mfe          ∷ !Folded
+  , _mfe          ∷ Folded
   -- ^ Minimum-free energy and corresponding structure.
-  , _mfeFrequency ∷ !Double
+  , _mfeFrequency ∷ Double
+  -- ^ The mfe frequency can be calculated as follows: @exp ((ensemble energy -
+  -- mfe energy) / kT)@.
+  --
   -- ^ TODO newtype wrapper?
-  , _ensemble     ∷ !Folded
+  , _ensemble     ∷ Folded
   -- ^ Uses special syntax with unpaired, weakly paired, somewhat paired,
   -- somewhat paired up or down, strongly paired up or down for the ensemble.
   -- The energy is the *ensemble free energy*.
-  , _centroid     ∷ !Folded
+  , _centroid     ∷ Folded
   -- ^ Centroid energy and structure.
-  , _diversity    ∷ !Double
+  , _centroidDistance ∷ Double
+  -- ^ Centroid distance to ensemble.
+  , _diversity        ∷ Double
   -- ^ Average basepair distance between all structures in the Boltzmann
   -- ensemble
+  --
   -- TODO Needs own newtype?
+  , _temperature      ∷ !Double
+  -- ^ Temperature in Celsius
+  --
+  -- TODO own newtype Celsius
   }
   deriving (Read,Show,Eq,Ord,Generic)
 makeLensesWith (lensRules & generateUpdateableOptics .~ False) ''RNAfold
 makeLensesFor [("_sequenceID", "sequenceIDlens")] ''RNAfold
+
+instance NFData RNAfold
 
 
 
@@ -86,11 +107,18 @@ rnafold inp' = unsafePerformIO . withMutex $ do
   let _sequenceID = ""
   let _input = mkRNAseq inp'
   _mfe      ← uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
-  _centroid ← uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.centroidTemp _temperature (_input^.rnaseq)
+  (_centroid, _centroidDistance) ← (\(e,s,d) → (Folded (RNAss s) (DG e), d)) <$> Bindings.centroidTemp _temperature (_input^.rnaseq)
   -- fucked up from here
-  let _mfeFrequency = -1
+  let k0 = 273.15
+  let gasconst = 1.98717
+  let _temperature = 37
+  let kT = (k0 + _temperature) * gasconst * 1000
   let _ensemble = Folded (RNAss "DO NOT USE ME") (DG 999999)
-  let _diversity = 0
+  let _diversity = 999999
+  -- the energy of the mfe structure calculated with @dangles=1@ model,
+  -- otherwise we get different mfe frequency values compared to rnafold.
+  let d1mfeenergy = 0
+  let _mfeFrequency = exp $ (_centroid^.foldedEnergy.to dG - d1mfeenergy) / kT
   return $ RNAfold {..}
 
 
@@ -123,8 +151,9 @@ data RNArewrite
 
 pRNAfold
   ∷ RNArewrite
+  → Double
   → Parser RNAfold
-pRNAfold r = do
+pRNAfold r _temperature = do
   let endedLine = A.takeTill isEndOfLine <* endOfLine
   let s2line = A8.takeWhile1 (`BS.elem` "(.)") <* skipSpace
   let nope = Folded (RNAss "") (DG 0)
@@ -137,9 +166,11 @@ pRNAfold r = do
   _sequenceID ← option "" $ char '>' *> endedLine
   _input      ← RNAseq <$> rewrite <$> endedLine
   let l = _input^.rnaseq.to BS.length
+  let lenGuard s2 = guard (BS.length s2 == l)
+        <?> ("s2 line length /= _input length: " ++ show (s2,_input) ++ "")
   -- mfe is always present ?!
   _mfe ← do s2 ← s2line
-            guard (BS.length s2 == l) <?> "s2 line length /= _input length"
+            lenGuard s2
             skipSpace
             e  ← char '(' *> skipSpace *> signed double <* char ')'
             let _foldedStructure = RNAss s2
@@ -151,22 +182,24 @@ pRNAfold r = do
   _ensemble ← option nope $
     (do endOfLine
         s2 ← s2line
+        lenGuard s2
         skipSpace
         e  ← char '[' *> skipSpace *> signed double <* char ']'
         let _foldedStructure = RNAss s2
         let _foldedEnergy    = DG e
         return Folded{..}
         <?> "ensemble")
-  _centroid ← option nope $
+  (_centroid, _centroidDistance) ← option (nope, 0) $
     (do endOfLine
         s2 ← s2line
+        lenGuard s2
         e ← char '{' *> skipSpace *> signed double
         -- TODO handle @d@ values
         d ← skipSpace *> "d=" *> skipSpace *> double
         skipSpace *> char '}'
-        let _foldedStructure = RNAss s2
-        let _foldedEnergy    = DG e
-        return Folded{..}
+        let _foldedStructure  = RNAss s2
+        let _foldedEnergy     = DG e
+        return (Folded{..}, d)
         <?> "centroid")
   (_mfeFrequency, _diversity) ← option (0, 0) $
     (do endOfLine -- previous line ending
@@ -185,23 +218,25 @@ pRNAfold r = do
 
 
 builderRNAfold ∷ RNAfold → Builder
-builderRNAfold RNAfold{..} = mconcat [hdr, emfe, nsmbl, cntrd]
+builderRNAfold RNAfold{..} = mconcat [hdr, sqnce, emfe, nsmbl, cntrd]
   where
-    notnull b = if BS.null b then mempty else byteString b
+    -- SLOW!
+    dbl d = byteString . BS.pack $ printf "%.2f" (d∷Double)
     addFolded l r Folded{..} = if BS.null (_rnass _foldedStructure)
                                then mempty
                                else nl <> byteString (_rnass _foldedStructure) <> char7 ' '
-                                    <> char7 l <> doubleDec (dG _foldedEnergy) <> char7 r
+                                    <> char7 l <> dbl (dG _foldedEnergy) <> char7 r
     nl = char7 '\n'
-    hdr = notnull _sequenceID
+    hdr = if BS.null _sequenceID then mempty else char7 '>' <> byteString _sequenceID <> nl
+    sqnce = byteString (_input^.rnaseq)
     emfe = addFolded '(' ')' _mfe
     nsmbl = addFolded '[' ']' _ensemble
     cntrd = let s = _centroid^.foldedStructure.rnass
             in if BS.null (_centroid^.foldedStructure.rnass)
                 then mempty
                 else nl <> byteString s <> " {"
-                     <> doubleDec (_centroid^.foldedEnergy.to dG)
-                     <> " d=" <> doubleDec _diversity
+                     <> dbl (_centroid^.foldedEnergy.to dG)
+                     <> " d=" <> dbl _diversity <> "}"
 
 
 

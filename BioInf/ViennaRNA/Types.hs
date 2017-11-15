@@ -2,6 +2,7 @@
 module BioInf.ViennaRNA.Types where
 
 import Control.Lens
+import Control.DeepSeq
 import GHC.Generics (Generic)
 
 import Biobase.Types.Energy
@@ -17,4 +18,6 @@ data Folded = Folded
   }
   deriving (Read,Show,Eq,Ord,Generic)
 makeLensesWith (lensRules & generateUpdateableOptics .~ False) ''Folded
+
+instance NFData Folded
 
