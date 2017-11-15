@@ -101,11 +101,10 @@ instance NFData RNAfold
 -- TODO consider creating a "super-lens" that updates whenever @_input@ or
 -- @_temperature@ change.
 
-rnafold ∷ ByteString → RNAfold
-rnafold inp' = unsafePerformIO . withMutex $ do
+rnafold ∷ RNAseq → RNAfold
+rnafold _input = unsafePerformIO . withMutex $ do
   let _temperature = 37
   let _sequenceID = ""
-  let _input = mkRNAseq inp'
   _mfe      ← uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
   (_centroid, _centroidDistance) ← (\(e,s,d) → (Folded (RNAss s) (DG e), d)) <$> Bindings.centroidTemp _temperature (_input^.rnaseq)
   -- fucked up from here
@@ -253,7 +252,7 @@ builderRNAfold RNAfold{..} = mconcat [hdr, sqnce, emfe, nsmbl, cntrd]
 instance Arbitrary RNAfold where
   -- Generate a sequence and calculate the structure for it.
   arbitrary =  choose (0,100)
-            >>= \k → rnafold <$> BS.pack <$> vectorOf k (QC.elements "ACGU")
+            >>= \k → rnafold <$> mkRNAseq <$> BS.pack <$> vectorOf k (QC.elements "ACGU")
   -- Try with all sequences missing one character.
-  shrink rna = [ rnafold $ BS.pack s | s ← shrink $ rna^.input.rnaseq.to unpack ]
+  shrink rna = [ rnafold $ mkRNAseq $ BS.pack s | s ← shrink $ rna^.input.rnaseq.to unpack ]
 

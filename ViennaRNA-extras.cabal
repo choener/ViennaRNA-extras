@@ -51,6 +51,7 @@ library
     BioInf.ViennaRNA.Internal
     BioInf.ViennaRNA.Parsers.RNAfold
     BioInf.ViennaRNA.Parsers.Types
+    BioInf.ViennaRNA.RNAeval
     BioInf.ViennaRNA.RNAfold
     BioInf.ViennaRNA.Types
   build-depends: base                   >= 4.7    && < 5.0
