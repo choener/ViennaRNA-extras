@@ -2,7 +2,10 @@
 -- | Everything needed to wrap @RNAfold@ results, parse lines with @RNAfold@
 -- input, fold a sequence with @rnafold@, and more.
 
-module BioInf.ViennaRNA.RNAfold where
+module BioInf.ViennaRNA.RNAfold
+  ( module BioInf.ViennaRNA.RNAfold
+  , module BioInf.ViennaRNA.Types
+  ) where
 
 import           Control.Arrow
 import           Control.Lens
