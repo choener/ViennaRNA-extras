@@ -16,5 +16,6 @@ import BioInf.ViennaRNA.Internal
 rnaeval ∷ Double → RNAseq → RNAss → DG
 rnaeval t (RNAseq s1) (RNAss s2)
   = unsafePerformIO . withMutex
-  $ DG <$> eosTemp t s1 s2
+  $! DG <$> eosTemp t s1 s2
+{-# NoInline rnaeval #-}
 

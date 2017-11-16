@@ -62,22 +62,22 @@ data RNAfold = RNAfold
   -- fasta-style identifier.
   , _input        ∷ !RNAseq
   -- ^ The input sequence, converting into an RNA string.
-  , _mfe          ∷ Folded
+  , _mfe          ∷ !Folded
   -- ^ Minimum-free energy and corresponding structure.
-  , _mfeFrequency ∷ Double
+  , _mfeFrequency ∷ !Double
   -- ^ The mfe frequency can be calculated as follows: @exp ((ensemble energy -
   -- mfe energy) / kT)@.
   --
   -- ^ TODO newtype wrapper?
-  , _ensemble     ∷ Folded
+  , _ensemble     ∷ !Folded
   -- ^ Uses special syntax with unpaired, weakly paired, somewhat paired,
   -- somewhat paired up or down, strongly paired up or down for the ensemble.
   -- The energy is the *ensemble free energy*.
-  , _centroid     ∷ Folded
+  , _centroid     ∷ !Folded
   -- ^ Centroid energy and structure.
-  , _centroidDistance ∷ Double
+  , _centroidDistance ∷ !Double
   -- ^ Centroid distance to ensemble.
-  , _diversity        ∷ Double
+  , _diversity        ∷ !Double
   -- ^ Average basepair distance between all structures in the Boltzmann
   -- ensemble
   --
@@ -105,7 +105,7 @@ instance NFData RNAfold
 -- @_temperature@ change.
 
 rnafold ∷ RNAseq → RNAfold
-rnafold _input = unsafePerformIO . withMutex $ do
+rnafold _input = unsafePerformIO . withMutex $! do
   let _temperature = 37
   let _sequenceID = ""
   _mfe      ← uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
@@ -121,7 +121,8 @@ rnafold _input = unsafePerformIO . withMutex $ do
   -- otherwise we get different mfe frequency values compared to rnafold.
   let d1mfeenergy = 0
   let _mfeFrequency = exp $ (_centroid^.foldedEnergy.to dG - d1mfeenergy) / kT
-  return $ RNAfold {..}
+  return $! RNAfold {..}
+{-# NoInline rnafold #-}
 
 
 
