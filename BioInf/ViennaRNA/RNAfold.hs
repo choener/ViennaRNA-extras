@@ -112,7 +112,7 @@ rnafold _input = unsafePerformIO . withMutex $! do
   (_centroid, _centroidDistance) ← (\(e,s,d) → (Folded (RNAss s) (DG e), d)) <$> Bindings.centroidTemp _temperature (_input^.rnaseq)
   -- fucked up from here
   let k0 = 273.15
-  let gasconst = 1.98717
+  let gasconst = 1.98717 -- in kcal * (K^(-1)) * (mol^(-1))
   let _temperature = 37
   let kT = (k0 + _temperature) * gasconst * 1000
   let _ensemble = Folded (RNAss "DO NOT USE ME") (DG 999999)
