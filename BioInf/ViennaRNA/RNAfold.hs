@@ -8,6 +8,7 @@ module BioInf.ViennaRNA.RNAfold
   ) where
 
 import           Control.Arrow
+import           Control.DeepSeq
 import           Control.Lens
 import           Control.Monad (guard)
 import           Data.Attoparsec.ByteString as A
@@ -16,13 +17,14 @@ import           Data.ByteString.Builder
 import           Data.ByteString (ByteString)
 import           Data.ByteString.Char8 as BS
 import           Data.Char (toUpper)
+import           Data.Maybe.Strict
 import           Data.Monoid
 import           Data.Tuple (swap)
+import           Debug.Trace
 import           GHC.Generics (Generic)
+import           Prelude hiding(Maybe(..))
 import           Test.QuickCheck as QC
 import           Text.Printf
-import           Debug.Trace
-import           Control.DeepSeq
 
 import           Biobase.Types.Energy
 import           Biobase.Types.Sequence (mkRNAseq, RNAseq(..), rnaseq)
@@ -82,7 +84,7 @@ data RNAfold = RNAfold
   -- ensemble
   --
   -- TODO Needs own newtype?
-  , _temperature      ∷ !Double
+  , _temperature      ∷ !(Maybe Double)
   -- ^ Temperature in Celsius
   --
   -- TODO own newtype Celsius
@@ -106,15 +108,14 @@ instance NFData RNAfold
 
 rnafold ∷ RNAseq → RNAfold
 rnafold _input = unsafePerformIO . withMutex $! do
-  let _temperature = 37
+  let _temperature = Just 37
   let _sequenceID = ""
   _mfe      ← uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
-  (_centroid, _centroidDistance) ← (\(e,s,d) → (Folded (RNAss s) (DG e), d)) <$> Bindings.centroidTemp _temperature (_input^.rnaseq)
+  (_centroid, _centroidDistance) ← (\(e,s,d) → (Folded (RNAss s) (DG e), d)) <$> Bindings.centroidTemp 37 (_input^.rnaseq)
   -- fucked up from here
   let k0 = 273.15
   let gasconst = 1.98717 -- in kcal * (K^(-1)) * (mol^(-1))
-  let _temperature = 37
-  let kT = (k0 + _temperature) * gasconst * 1000
+  let kT = (k0 + 37) * gasconst * 1000
   let _ensemble = Folded (RNAss "DO NOT USE ME") (DG 999999)
   let _diversity = 999999
   -- the energy of the mfe structure calculated with @dangles=1@ model,
@@ -156,9 +157,11 @@ pRNAfold
   ∷ RNArewrite
   → Double
   → Parser RNAfold
-pRNAfold r _temperature = do
+pRNAfold r celsius = do
+  let _temperature = Just celsius
   let endedLine = A.takeTill isEndOfLine <* endOfLine
   let s2line = A8.takeWhile1 (`BS.elem` "(.)") <* skipSpace
+  let ensline = A8.takeWhile1 (`BS.elem` "(){}.,|") <* skipSpace
   let nope = Folded (RNAss "") (DG 0)
   let rewrite = case r of
         NoRewrite → id
@@ -184,7 +187,7 @@ pRNAfold r _temperature = do
   -- energy!
   _ensemble ← option nope $
     (do endOfLine
-        s2 ← s2line
+        s2 ← ensline
         lenGuard s2
         skipSpace
         e  ← char '[' *> skipSpace *> signed double <* char ']'
