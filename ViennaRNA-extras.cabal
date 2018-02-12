@@ -114,12 +114,15 @@ test-suite properties
   build-depends: base
                , attoparsec
                , bytestring
+               , lens
+               , parallel               >= 3.2
                , QuickCheck
-               , tasty                        >= 0.11
-               , tasty-quickcheck             >= 0.8
-               , tasty-th                     >= 0.1
+               , tasty                  >= 0.11
+               , tasty-quickcheck       >= 0.8
+               , tasty-th               >= 0.1
                , vector
                --
+               , BiobaseTypes
                , ViennaRNA-extras
 
 

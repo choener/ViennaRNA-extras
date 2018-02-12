@@ -107,7 +107,7 @@ instance NFData RNAfold
 -- @_temperature@ change.
 
 rnafold ∷ RNAseq → RNAfold
-rnafold _input = unsafePerformIO . withMutex $! do
+rnafold _input = unsafePerformIO $! do
   let _temperature = Just 37
   let _sequenceID = ""
   _mfe      ← uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
@@ -116,7 +116,8 @@ rnafold _input = unsafePerformIO . withMutex $! do
   let k0 = 273.15
   let gasconst = 1.98717 -- in kcal * (K^(-1)) * (mol^(-1))
   let kT = (k0 + 37) * gasconst * 1000
-  (_ensemble,_) ← (\(e,s,arr) → (Folded (RNAss s) (DG e), arr)) <$> Bindings.part (_input^.rnaseq)
+  -- TODO still single-threaded!
+  (_ensemble,_) ← (\(e,s,arr) → (Folded (RNAss s) (DG e), arr)) <$> (withMutex $ Bindings.part (_input^.rnaseq))
   let _diversity = 999999
   -- the energy of the mfe structure calculated with @dangles=1@ model,
   -- otherwise we get different mfe frequency values compared to rnafold.

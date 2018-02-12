@@ -7,17 +7,21 @@
 
 module Main where
 
-import Data.Attoparsec.ByteString.Char8 as A8
-import Data.ByteString.Builder
-import Data.ByteString.Lazy.Char8 (toStrict)
-import Data.List (intersperse)
-import Debug.Trace
-import Test.QuickCheck
-import Test.Tasty
-import Test.Tasty.QuickCheck (testProperty)
-import Test.Tasty.TH
+import           Control.Parallel.Strategies
+import           Data.Attoparsec.ByteString.Char8 as A8
+import           Data.ByteString.Builder
+import           Data.ByteString.Lazy.Char8 (toStrict)
+import           Data.List (intersperse)
+import           Debug.Trace
+import qualified Data.ByteString as BS
+import           Test.QuickCheck
+import           Test.Tasty
+import           Test.Tasty.QuickCheck (testProperty)
+import           Test.Tasty.TH
+import           Control.Lens
 
-import BioInf.ViennaRNA.RNAfold
+import           Biobase.Types.Sequence (RNAseq,rnaseq)
+import           BioInf.ViennaRNA.RNAfold
 
 -- prop_build ∷ RNAfold → Bool
 -- prop_build r
@@ -46,6 +50,15 @@ import BioInf.ViennaRNA.RNAfold
 --     bld = mconcat $ intersperse "\n" $ map builderRNAfold rs
 --     lbs = toStrict $ toLazyByteString bld
 --     ap  = parseOnly (many' (pRNAfold NoRewrite 37) <* endOfInput) lbs
+
+-- | Run RNAfold in parallel.
+
+prop_parallel_RNAfold ∷ [RNAseq] → Bool
+prop_parallel_RNAfold ss' = ps == ns
+  where
+    ss = [ s | s ← ss', BS.length (s^.rnaseq) > 0 ]
+    ps = parMap rdeepseq rnafold ss
+    ns = map rnafold ss
 
 main ∷ IO ()
 main = $(defaultMainGenerator)
