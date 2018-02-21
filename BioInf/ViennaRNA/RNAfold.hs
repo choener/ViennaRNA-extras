@@ -11,12 +11,14 @@ import           Control.Arrow
 import           Control.DeepSeq
 import           Control.Lens
 import           Control.Monad (guard)
+import           Data.Array.IArray as AI
 import           Data.Attoparsec.ByteString as A
 import           Data.Attoparsec.ByteString.Char8 as A8
 import           Data.ByteString.Builder
 import           Data.ByteString (ByteString)
 import           Data.ByteString.Char8 as BS
 import           Data.Char (toUpper)
+import           Data.Default.Class
 import           Data.Maybe.Strict
 import           Data.Monoid
 import           Data.Tuple (swap)
@@ -95,7 +97,32 @@ makeLensesFor [("_sequenceID", "sequenceIDlens")] ''RNAfold
 
 instance NFData RNAfold
 
+-- | Getter that returns @Maybe (Input,MFE)@ as a pair. @Just@ only if @_mfe@
+-- is not @absentFolded@.
 
+getMFE ∷ IndexPreservingGetter RNAfold (Maybe (RNAseq, Folded))
+getMFE = to (\rna → if _mfe rna == absentFolded then Nothing else Just (_input rna, _mfe rna))
+{-# Inline getMFE #-}
+
+-- | The set of options that controls which elements of the @RNAfold@ structure
+-- are filled.
+
+data FoldOptions = FoldOptions
+  { _fomfe          ∷ !Bool
+  , _focentroid     ∷ !Bool
+  , _foensemble     ∷ !Bool
+  , _fotemperature  ∷ !Double
+  }
+  deriving (Read,Show,Eq,Ord,Generic)
+makeLenses ''FoldOptions
+
+instance Default FoldOptions where
+  def = FoldOptions
+    { _fomfe          = True
+    , _focentroid     = True
+    , _foensemble     = True
+    , _fotemperature  = 37
+    }
 
 -- | Fold a sequence.
 --
@@ -106,18 +133,26 @@ instance NFData RNAfold
 -- TODO consider creating a "super-lens" that updates whenever @_input@ or
 -- @_temperature@ change.
 
-rnafold ∷ RNAseq → RNAfold
-rnafold _input = unsafePerformIO $! do
+rnafold ∷ FoldOptions → RNAseq → RNAfold
+rnafold o _input = unsafePerformIO $! do
   let _temperature = Just 37
   let _sequenceID = ""
-  _mfe      ← uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
-  (_centroid, _centroidDistance) ← (\(e,s,d) → (Folded (RNAss s) (DG e), d)) <$> Bindings.centroidTemp 37 (_input^.rnaseq)
+  _mfe      ← if o^.fomfe
+    then uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
+    else return absentFolded
+  (_centroid, _centroidDistance) ← if o^.focentroid
+    then (\(e,s,d) → (Folded (RNAss s) (DG e), d)) <$> Bindings.centroidTemp 37 (_input^.rnaseq)
+    else return (absentFolded, 1/0)
   -- fucked up from here
   let k0 = 273.15
   let gasconst = 1.98717 -- in kcal * (K^(-1)) * (mol^(-1))
   let kT = (k0 + 37) * gasconst * 1000
   -- TODO still single-threaded!
-  (_ensemble,_) ← (\(e,s,arr) → (Folded (RNAss s) (DG e), arr)) <$> (withMutex $ Bindings.part (_input^.rnaseq))
+  --
+  -- TODO we should return the array of pair probabilities as well.
+  (_ensemble,_) ← if o^.foensemble
+    then (\(e,s,arr) → (Folded (RNAss s) (DG e), arr)) <$> (withMutex $ Bindings.part (_input^.rnaseq))
+    else return (absentFolded, AI.array ((0,0),(0,0)) [])
   let _diversity = 999999
   -- the energy of the mfe structure calculated with @dangles=1@ model,
   -- otherwise we get different mfe frequency values compared to rnafold.
@@ -260,7 +295,7 @@ builderRNAfold RNAfold{..} = mconcat [hdr, sqnce, emfe, nsmbl, cntrd]
 instance Arbitrary RNAfold where
   -- Generate a sequence and calculate the structure for it.
   arbitrary =  choose (0,100)
-            >>= \k → rnafold <$> mkRNAseq <$> BS.pack <$> vectorOf k (QC.elements "ACGU")
+            >>= \k → rnafold def <$> mkRNAseq <$> BS.pack <$> vectorOf k (QC.elements "ACGU")
   -- Try with all sequences missing one character.
-  shrink rna = [ rnafold $ mkRNAseq $ BS.pack s | s ← shrink $ rna^.input.rnaseq.to unpack ]
+  shrink rna = [ rnafold def $ mkRNAseq $ BS.pack s | s ← shrink $ rna^.input.rnaseq.to unpack ]
 

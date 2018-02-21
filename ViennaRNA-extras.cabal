@@ -58,6 +58,7 @@ library
                , array
                , attoparsec             >= 0.13
                , bytestring
+               , data-default-class     >= 0.1
                , deepseq                >= 1.4
                , lens                   >= 4.0
 --               , pipes                  >= 4.0

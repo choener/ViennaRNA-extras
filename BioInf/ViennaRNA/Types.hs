@@ -19,5 +19,11 @@ data Folded = Folded
   deriving (Read,Show,Eq,Ord,Generic)
 makeLensesWith (lensRules & generateUpdateableOptics .~ False) ''Folded
 
+absentFolded = Folded
+  { _foldedStructure = mempty
+  , _foldedEnergy    = DG (-1/0)
+  }
+{-# Inlinable absentFolded #-}
+
 instance NFData Folded
 
