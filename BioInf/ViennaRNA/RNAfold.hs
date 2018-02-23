@@ -12,6 +12,7 @@ import           Control.DeepSeq
 import           Control.Lens
 import           Control.Monad (guard)
 import           Data.Array.IArray as AI
+import qualified Data.Array.Unboxed as AU
 import           Data.Attoparsec.ByteString as A
 import           Data.Attoparsec.ByteString.Char8 as A8
 import           Data.ByteString.Builder
@@ -19,12 +20,11 @@ import           Data.ByteString (ByteString)
 import           Data.ByteString.Char8 as BS
 import           Data.Char (toUpper)
 import           Data.Default.Class
-import           Data.Maybe.Strict
 import           Data.Monoid
 import           Data.Tuple (swap)
 import           Debug.Trace
 import           GHC.Generics (Generic)
-import           Prelude hiding(Maybe(..))
+import           Prelude
 import           Test.QuickCheck as QC
 import           Text.Printf
 
@@ -77,6 +77,11 @@ data RNAfold = RNAfold
   -- ^ Uses special syntax with unpaired, weakly paired, somewhat paired,
   -- somewhat paired up or down, strongly paired up or down for the ensemble.
   -- The energy is the *ensemble free energy*.
+  , _basepairProbs  ∷ !(AU.UArray (Int,Int) Double)
+  -- ^ If the array dimensions are more than (0,0), this array holds the
+  -- probability that @(i,j)@ pair.
+  --
+  -- TODO use @Prob@ instead of Double
   , _centroid     ∷ !Folded
   -- ^ Centroid energy and structure.
   , _centroidDistance ∷ !Double
@@ -86,16 +91,17 @@ data RNAfold = RNAfold
   -- ensemble
   --
   -- TODO Needs own newtype?
-  , _temperature      ∷ !(Maybe Double)
+  , _temperature      ∷ !Double
   -- ^ Temperature in Celsius
   --
   -- TODO own newtype Celsius
   }
-  deriving (Read,Show,Eq,Ord,Generic)
+  deriving (Show,Eq,Ord,Generic)
 makeLensesWith (lensRules & generateUpdateableOptics .~ False) ''RNAfold
 makeLensesFor [("_sequenceID", "sequenceIDlens")] ''RNAfold
 
-instance NFData RNAfold
+instance NFData RNAfold where
+  rnf RNAfold{..} = ()
 
 -- | Getter that returns @Maybe (Input,MFE)@ as a pair. @Just@ only if @_mfe@
 -- is not @absentFolded@.
@@ -104,25 +110,7 @@ getMFE ∷ IndexPreservingGetter RNAfold (Maybe (RNAseq, Folded))
 getMFE = to (\rna → if _mfe rna == absentFolded then Nothing else Just (_input rna, _mfe rna))
 {-# Inline getMFE #-}
 
--- | The set of options that controls which elements of the @RNAfold@ structure
--- are filled.
 
-data FoldOptions = FoldOptions
-  { _fomfe          ∷ !Bool
-  , _focentroid     ∷ !Bool
-  , _foensemble     ∷ !Bool
-  , _fotemperature  ∷ !Double
-  }
-  deriving (Read,Show,Eq,Ord,Generic)
-makeLenses ''FoldOptions
-
-instance Default FoldOptions where
-  def = FoldOptions
-    { _fomfe          = True
-    , _focentroid     = True
-    , _foensemble     = True
-    , _fotemperature  = 37
-    }
 
 -- | Fold a sequence.
 --
@@ -133,16 +121,13 @@ instance Default FoldOptions where
 -- TODO consider creating a "super-lens" that updates whenever @_input@ or
 -- @_temperature@ change.
 
-rnafold ∷ FoldOptions → RNAseq → RNAfold
+rnafold ∷ Bindings.RNAfoldOptions → RNAseq → RNAfold
 rnafold o _input = unsafePerformIO $! do
-  let _temperature = Just 37
+  let _temperature = Bindings._fotemperature o
   let _sequenceID = ""
-  _mfe      ← if o^.fomfe
-    then uncurry Folded . swap <$> (DG *** RNAss) <$> Bindings.mfe (_input^.rnaseq)
-    else return absentFolded
-  (_centroid, _centroidDistance) ← if o^.focentroid
-    then (\(e,s,d) → (Folded (RNAss s) (DG e), d)) <$> Bindings.centroidTemp 37 (_input^.rnaseq)
-    else return (absentFolded, 1/0)
+  (mfeT,ensembleT,centroidT) ← Bindings.rnafold o (_input^.rnaseq)
+  let _mfe = maybe absentFolded (uncurry Folded . (DG *** RNAss)) mfeT
+  let (_centroid, _centroidDistance) = maybe (absentFolded, 1/0) (\(e,s,d) → (Folded (DG e) (RNAss s), d)) centroidT
   -- fucked up from here
   let k0 = 273.15
   let gasconst = 1.98717 -- in kcal * (K^(-1)) * (mol^(-1))
@@ -150,14 +135,13 @@ rnafold o _input = unsafePerformIO $! do
   -- TODO still single-threaded!
   --
   -- TODO we should return the array of pair probabilities as well.
-  (_ensemble,_) ← if o^.foensemble
-    then (\(e,s,arr) → (Folded (RNAss s) (DG e), arr)) <$> (withMutex $ Bindings.part (_input^.rnaseq))
-    else return (absentFolded, AI.array ((0,0),(0,0)) [])
+  let (_ensemble, _basepairProbs) = maybe (absentFolded, AU.array ((0,0),(0,0)) [((0,0),0)])
+                                    (\(e,s,arr) → (Folded (DG e) (RNAss s), arr)) ensembleT
   let _diversity = 999999
-  -- the energy of the mfe structure calculated with @dangles=1@ model,
-  -- otherwise we get different mfe frequency values compared to rnafold.
-  let d1mfeenergy = 0
-  let _mfeFrequency = exp $ (_centroid^.foldedEnergy.to dG - d1mfeenergy) / kT
+  -- TODO the energy of the mfe structure calculated with @dangles=1@ model,
+  -- otherwise we get different mfe frequency values compared to rnafold. Still
+  -- valid?
+  let _mfeFrequency = exp $ (_centroid^.foldedEnergy.to dG - _mfe^.foldedEnergy.to dG) / kT
   return $! RNAfold {..}
 {-# NoInline rnafold #-}
 
@@ -194,11 +178,10 @@ pRNAfold
   → Double
   → Parser RNAfold
 pRNAfold r celsius = do
-  let _temperature = Just celsius
+  let _temperature = celsius
   let endedLine = A.takeTill isEndOfLine <* endOfLine
   let s2line = A8.takeWhile1 (`BS.elem` "(.)") <* skipSpace
   let ensline = A8.takeWhile1 (`BS.elem` "(){}.,|") <* skipSpace
-  let nope = Folded (RNAss "") (DG 0)
   let rewrite = case r of
         NoRewrite → id
         ForceRNA  → BS.map (go . toUpper) where
@@ -221,7 +204,7 @@ pRNAfold r celsius = do
             <?> "mfe"
   -- from here on, things are optional, including the newline after the mfe
   -- energy!
-  _ensemble ← option nope $
+  _ensemble ← option absentFolded $
     (do endOfLine
         s2 ← ensline
         lenGuard s2
@@ -231,7 +214,8 @@ pRNAfold r celsius = do
         let _foldedEnergy    = DG e
         return Folded{..}
         <?> "ensemble")
-  (_centroid, _centroidDistance) ← option (nope, 0) $
+  let _basepairProbs = AU.array ((0,0),(0,0)) [((0,0),0)]
+  (_centroid, _centroidDistance) ← option (absentFolded, 0) $
     (do endOfLine
         s2 ← s2line
         lenGuard s2

@@ -115,6 +115,7 @@ test-suite properties
   build-depends: base
                , attoparsec
                , bytestring
+               , data-default-class
                , lens
                , parallel               >= 3.2
                , QuickCheck

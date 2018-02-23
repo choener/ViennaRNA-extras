@@ -13,15 +13,15 @@ import Biobase.Types.Structure
 -- | Holds a pair of energy and structure.
 
 data Folded = Folded
-  { _foldedStructure  ∷ !RNAss
-  , _foldedEnergy     ∷ !DG
+  { _foldedEnergy     ∷ !DG
+  , _foldedStructure  ∷ !RNAss
   }
   deriving (Read,Show,Eq,Ord,Generic)
 makeLensesWith (lensRules & generateUpdateableOptics .~ False) ''Folded
 
 absentFolded = Folded
-  { _foldedStructure = mempty
-  , _foldedEnergy    = DG (-1/0)
+  { _foldedEnergy    = DG (-1/0)
+  , _foldedStructure = mempty
   }
 {-# Inlinable absentFolded #-}
 
