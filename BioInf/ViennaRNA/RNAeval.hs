@@ -2,7 +2,7 @@
 module BioInf.ViennaRNA.RNAeval where
 
 import Biobase.Types.Energy (DG(..))
-import Biobase.Types.Sequence (RNAseq(..))
+import Biobase.Types.NucleotideSequence (RNAseq(..))
 import Biobase.Types.Structure (RNAss(..))
 import BioInf.ViennaRNA.Bindings (eosTemp)
 

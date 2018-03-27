@@ -29,7 +29,7 @@ import           Test.QuickCheck as QC
 import           Text.Printf
 
 import           Biobase.Types.Energy
-import           Biobase.Types.Sequence (mkRNAseq, RNAseq(..), rnaseq)
+import           Biobase.Types.NucleotideSequence (mkRNAseq, RNAseq(..), rnaseq)
 import           Biobase.Types.Structure
 import qualified BioInf.ViennaRNA.Bindings as Bindings
 

@@ -21,7 +21,7 @@ import           Test.Tasty
 import           Test.Tasty.QuickCheck (testProperty)
 import           Test.Tasty.TH
 
-import           Biobase.Types.Sequence (RNAseq,rnaseq)
+import           Biobase.Types.NucleotideSequence (RNAseq,rnaseq)
 import           BioInf.ViennaRNA.RNAfold
 
 -- prop_build ∷ RNAfold → Bool

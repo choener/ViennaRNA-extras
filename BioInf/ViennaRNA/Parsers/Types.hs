@@ -10,7 +10,7 @@ import Data.ByteString (ByteString)
 import GHC.Generics (Generic)
 import Control.Lens
 
-import Biobase.Types.Sequence
+import Biobase.Types.NucleotideSequence
 import Biobase.Types.Structure
 import Biobase.Types.Energy
 
