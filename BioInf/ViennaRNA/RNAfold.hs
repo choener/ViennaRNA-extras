@@ -29,7 +29,7 @@ import           Test.QuickCheck as QC
 import           Text.Printf
 
 import           Biobase.Types.Energy
-import           Biobase.Types.NucleotideSequence (mkRNAseq, RNAseq(..), rnaseq)
+import           Biobase.Types.BioSequence
 import           Biobase.Types.Structure
 import qualified BioInf.ViennaRNA.Bindings as Bindings
 
@@ -64,7 +64,7 @@ data RNAfold = RNAfold
   { _sequenceID   ∷ !ByteString
   -- ^ Set to @not . null@ if the sequence was given a name. This is (likely) a
   -- fasta-style identifier.
-  , _input        ∷ !RNAseq
+  , _input        ∷ !(BioSequence RNA)
   -- ^ The input sequence, converting into an RNA string.
   , _mfe          ∷ !Folded
   -- ^ Minimum-free energy and corresponding structure.
@@ -106,7 +106,7 @@ instance NFData RNAfold where
 -- | Getter that returns @Maybe (Input,MFE)@ as a pair. @Just@ only if @_mfe@
 -- is not @absentFolded@.
 
-getMFE ∷ IndexPreservingGetter RNAfold (Maybe (RNAseq, Folded))
+getMFE ∷ IndexPreservingGetter RNAfold (Maybe (BioSequence RNA, Folded))
 getMFE = to (\rna → if _mfe rna == absentFolded then Nothing else Just (_input rna, _mfe rna))
 {-# Inline getMFE #-}
 
@@ -121,11 +121,11 @@ getMFE = to (\rna → if _mfe rna == absentFolded then Nothing else Just (_input
 -- TODO consider creating a "super-lens" that updates whenever @_input@ or
 -- @_temperature@ change.
 
-rnafold ∷ Bindings.RNAfoldOptions → RNAseq → RNAfold
+rnafold ∷ Bindings.RNAfoldOptions → BioSequence RNA → RNAfold
 rnafold o _input = unsafePerformIO $! do
   let _temperature = Bindings._fotemperature o
   let _sequenceID = ""
-  (mfeT,ensembleT,centroidT) ← Bindings.rnafold o (_input^.rnaseq)
+  (mfeT,ensembleT,centroidT) ← Bindings.rnafold o (_input^._BioSequence)
   let _mfe = maybe absentFolded (uncurry Folded . (DG *** RNAss)) mfeT
   let (_centroid, _centroidDistance) = maybe (absentFolded, 1/0) (\(e,s,d) → (Folded (DG e) (RNAss s), d)) centroidT
   -- fucked up from here
@@ -189,8 +189,8 @@ pRNAfold r celsius = do
             | x `BS.elem` "ACGUacgu" = x
           go x   = 'N'
   _sequenceID ← option "" $ char '>' *> endedLine
-  _input      ← RNAseq <$> rewrite <$> endedLine
-  let l = _input^.rnaseq.to BS.length
+  _input      ← BioSequence <$> rewrite <$> endedLine
+  let l = _input^._BioSequence.to BS.length
   let lenGuard s2 = guard (BS.length s2 == l)
         <?> ("s2 line length /= _input length: " ++ show (s2,_input) ++ "")
   -- mfe is always present ?!
@@ -254,7 +254,7 @@ builderRNAfold RNAfold{..} = mconcat [hdr, sqnce, emfe, nsmbl, cntrd]
                                     <> char7 l <> dbl (dG _foldedEnergy) <> char7 r
     nl = char7 '\n'
     hdr = if BS.null _sequenceID then mempty else char7 '>' <> byteString _sequenceID <> nl
-    sqnce = byteString (_input^.rnaseq)
+    sqnce = byteString (_input^._BioSequence)
     emfe = addFolded '(' ')' _mfe
     nsmbl = addFolded '[' ']' _ensemble
     cntrd = let s = _centroid^.foldedStructure.rnass
@@ -281,5 +281,5 @@ instance Arbitrary RNAfold where
   arbitrary =  choose (0,100)
             >>= \k → rnafold def <$> mkRNAseq <$> BS.pack <$> vectorOf k (QC.elements "ACGU")
   -- Try with all sequences missing one character.
-  shrink rna = [ rnafold def $ mkRNAseq $ BS.pack s | s ← shrink $ rna^.input.rnaseq.to unpack ]
+  shrink rna = [ rnafold def $ mkRNAseq $ BS.pack s | s ← shrink $ rna^.input._BioSequence.to unpack ]
 

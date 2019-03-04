@@ -21,7 +21,7 @@ import           Test.Tasty
 import           Test.Tasty.QuickCheck (testProperty)
 import           Test.Tasty.TH
 
-import           Biobase.Types.NucleotideSequence (RNAseq,rnaseq)
+import           Biobase.Types.BioSequence
 import           BioInf.ViennaRNA.RNAfold
 
 -- prop_build ∷ RNAfold → Bool
@@ -56,11 +56,11 @@ import           BioInf.ViennaRNA.RNAfold
 --
 -- NOTE being tested in the ViennaRNA-bindings already!
 
-prop_parallel_RNAfold ∷ [RNAseq] → Bool
+prop_parallel_RNAfold ∷ [BioSequence RNA] → Bool
 prop_parallel_RNAfold ss' = ps == ns
   where
     o = def
-    ss = [ s | s ← ss', BS.length (s^.rnaseq) > 0 ]
+    ss = [ s | s ← ss', BS.length (s^._BioSequence) > 0 ]
     ps = parMap rdeepseq (rnafold o) ss
     ns = map (rnafold o) ss
 
