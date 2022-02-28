@@ -67,8 +67,8 @@ library
                , strict                 >= 0.3
                , strict-base-types      >= 0.5
                --
-               , BiobaseTypes           == 0.2.0.*
-               , BiobaseXNA             == 0.11.0.*
+               , BiobaseTypes           == 0.2.1.*
+               , BiobaseXNA             == 0.11.1.*
                , ViennaRNA-bindings     == 0.233.2.*
   default-language:
     Haskell2010
