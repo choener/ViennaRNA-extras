@@ -1,6 +1,6 @@
 { mkDerivation, array, attoparsec, base, BiobaseTypes, BiobaseXNA
-, bytestring, data-default-class, deepseq, lens, parallel
-, QuickCheck, stdenv, streaming, streaming-bytestring, strict
+, bytestring, data-default-class, deepseq, lens, lib, parallel
+, QuickCheck, streaming, streaming-bytestring, strict
 , strict-base-types, tasty, tasty-quickcheck, tasty-th, vector
 , ViennaRNA-bindings
 }:
@@ -19,5 +19,5 @@ mkDerivation {
   ];
   homepage = "https://github.com/choener/ViennaRNA-extras";
   description = "ViennaRNA v2 extensions";
-  license = stdenv.lib.licenses.bsd3;
+  license = lib.licenses.bsd3;
 }
